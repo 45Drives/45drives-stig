@@ -1,0 +1,4 @@
+rpm_gpg_file: /etc/pki/rpm-gpg/RPM-GPG-KEY-rockyofficial
+rpm_gpg_keys: 
+  "Release Engineering": "7051 C470 A929 F454 CEBE  37B7 15AF 5DAC 6D74 5A60"
+
