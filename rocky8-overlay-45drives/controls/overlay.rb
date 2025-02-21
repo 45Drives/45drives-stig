@@ -17,4 +17,28 @@ include_controls 'redhat-enterprise-linux-8-stig-baseline' do
       end
     end
   end
+
+  control 'SV-230221' do
+    release = os.release
+    
+    #changing the regex so '8.10' isn't caught by the '8.1' check
+    EOMS_DATE = {
+      /\b8\.1\b(?!\d)/ => '30 November 2021',
+      /\b8\.2\b(?!\d)/ => '30 April 2022',
+      /\b8\.3\b(?!\d)/ => '30 April 2021',
+      /\b8\.4\b(?!\d)/ => '31 May 2023',
+      /\b8\.5\b(?!\d)/ => '31 May 2022',
+      /\b8\.6\b(?!\d)/ => '31 May 2024',
+      /\b8\.7\b(?!\d)/ => '31 May 2023',
+      /\b8\.8\b(?!\d)/ => '31 May 2025',
+      /\b8\.9\b(?!\d)/ => '31 May 2024',
+      /\b8\.10\b(?!\d)/ => '31 May 2029'
+    }.find { |k, _v| k.match(release) }&.last
+
+    describe "The release \"#{release}\" is still be within the support window" do
+      it "ending on #{EOMS_DATE}" do
+        expect(Date.today).to be <= Date.parse(EOMS_DATE)
+      end
+    end
+  end
 end

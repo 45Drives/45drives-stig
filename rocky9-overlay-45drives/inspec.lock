@@ -1,0 +1,7 @@
+---
+lockfile_version: 1
+depends:
+- name: redhat-enterprise-linux-9-stig-baseline
+  resolved_source:
+    path: "/root/redhat-enterprise-linux-9-stig-baseline"
+  version_constraints: []

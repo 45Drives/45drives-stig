@@ -1,0 +1,3 @@
+user_accounts: ["45drives"]
+known_system_accounts: ["adm","bin","chrony","daemon","dbus","halt","lp","nobody","ntp","operator","polkitd","postfix","root","shutdown","sshd","sssd","sync","systemd-bus-proxy","systemd-network","games","ftp","unbound","tss","systemd-coredump","rtkit","pipewire","geoclue","libstoragemgmt","cockpit-wsinstance","flatpak","fapolicyd","clevis","setroubleshoot","tcpdump","mail"]
+non_removable_media_fs: ["/boot","/var"]
