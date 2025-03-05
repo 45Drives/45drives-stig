@@ -1,3 +1,8 @@
 user_accounts: ["45drives"]
 known_system_accounts: ["adm","bin","chrony","daemon","dbus","halt","lp","nobody","ntp","operator","polkitd","postfix","root","shutdown","sshd","sssd","sync","systemd-bus-proxy","systemd-network","games","ftp","unbound","tss","systemd-coredump","rtkit","pipewire","geoclue","libstoragemgmt","cockpit-wsinstance","flatpak","fapolicyd","clevis","setroubleshoot","tcpdump","mail"]
-non_removable_media_fs: ["/boot","/var"]
+non_removable_media_fs: ["/boot","/var", "/", "/boot/efi", "/home", "/tmp", "none", "swap"]
+skip_endpoint_security_tool: true
+allow_container_openssh_server: true
+approved_openssh_client_conf: { "ciphers": "aes256-gcm@openssh.com,aes256-ctr,aes128-gcm@openssh.com,aes128-ctr", "macs": "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512" }
+approved_openssh_server_conf: { "ciphers": "aes256-gcm@openssh.com,aes256-ctr,aes128-gcm@openssh.com,aes128-ctr", "macs": "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512" }
+mount_tmp_options: { "nodev": true, "nosuid": false, "noexec": false }

@@ -1,40 +1,33 @@
 include_controls 'redhat-enterprise-linux-9-stig-baseline' do 
-  # control 'SV-257978' do
-  #   openssh_present = package('openssh-server').installed?
 
-  #   only_if('This requirement is Not Applicable in the container without open-ssh installed', impact: 0.0) {
-  #     !(virtualization.system.eql?('docker') && !openssh_present)
-  #   }
+  control 'SV-258131' do
 
-  #   if input('allow_container_openssh_server') == false
-  #     describe 'In a container Environment' do
-  #       it 'the OpenSSH Server should be installed only when allowed in a container environment' do
-  #         expect(openssh_present).to eq(false), 'OpenSSH Server is installed but not approved for the container environment'
-  #       end
-  #     end
-  #   else
-  #     describe 'In a machine environment' do
-  #       it 'the OpenSSH Server should be installed' do
-  #         expect(package('openssh-server').installed?).to eq(true), 'the OpenSSH Server is not installed'
-  #       end
-  #     end
-  #   end
-  # end
+    only_if('If the System Administrator demonstrates the use of an approved alternate multifactor authentication method, this requirement is not applicable.', impact: 0.0) {
+      !input('smart_card_enabled')
+    }
   
-  # control 'SV-258058' do
-  #   known_system_accounts = input('known_system_accounts')
-  #   user_accounts = input('user_accounts')
-
-  #   failing_users = passwd.users.reject { |u| (known_system_accounts + user_accounts).uniq.include?(u) }
-
-  #   describe 'All users' do
-  #     it 'should have an explicit, authorized purpose (either a known user account or a required system account)' do
-  #       expect(failing_users).to be_empty, "Failing users:\n\t- #{failing_users.join("\n\t- ")}"
-  #     end
-  #   end
-  # end
+    root_ca_file = input('root_ca_file')
+    describe file(root_ca_file) do
+      it { should exist }
+    end
   
-  
+    #updating this from "DoD Root CA 3" to "DoD Root CA 6"
+    describe 'Ensure the RootCA is a DoD-issued certificate with a valid date' do
+      if file(root_ca_file).exist?
+        subject { x509_certificate(root_ca_file) }
+        it 'has the correct issuer_dn' do
+          expect(subject.issuer_dn).to match('/C=US/O=U.S. Government/OU=DoD/OU=PKI/CN=DoD Root CA 6')
+        end
+        it 'has the correct subject_dn' do
+          expect(subject.subject_dn).to match('/C=US/O=U.S. Government/OU=DoD/OU=PKI/CN=DoD Root CA 6')
+        end
+        it 'is valid' do
+          expect(subject.validity_in_days).to be > 0
+        end
+      end
+    end
+  end
+
   control 'SV-257879' do
     all_args = command('blkid').stdout.strip.split("\n").map { |s| s.sub(/^"(.*)"$/, '\1') }
     def describe_and_skip(message)
@@ -62,33 +55,22 @@ include_controls 'redhat-enterprise-linux-9-stig-baseline' do
     end
   end
   
-  
-  # control 'SV-257857' do
-  #   option = 'noexec'
-  #   file_systems = etc_fstab.params
-  #   non_removable_media = input('non_removable_media_fs')
-  #   mounted_removeable_media = file_systems.reject { |mnt| non_removable_media.include?(mnt['mount_point']) }
-  #   failing_mounts = mounted_removeable_media.reject { |mnt| mnt['mount_options'].include?(option) }
+  control 'SV-258136' do
+    file_integrity_tool = input('file_integrity_tool')
 
-  #   # be very explicit about why this one was a finding since we do not know which mounts are removeable media without the user telling us
-  #   rem_media_msg = "NOTE: Some mounted devices are not indicated to be non-removable media (you may need to update the 'non_removable_media_fs' input to check if these are truly subject to this requirement)\n"
-
-  #   # there should either be no mounted removable media (which should be a requirement anyway), OR
-  #   # all removeable media should be mounted with noexec
-  #   if mounted_removeable_media.empty?
-  #     describe 'No removeable media' do
-  #       it 'are mounted' do
-  #         expect(mounted_removeable_media).to be_empty
-  #       end
-  #     end
-  #   else
-  #     describe 'Any mounted removeable media' do
-  #       it "should have '#{option}' set" do
-  #         expect(failing_mounts).to be_empty, "#{rem_media_msg}\nRemoveable media without '#{option}' set:\n\t- #{failing_mounts.join("\n\t- ")}"
-  #       end
-  #     end
-  #   end
-  # end
+    only_if('Control not applicable within a container', impact: 0.0) do
+      !virtualization.system.eql?('docker')
+    end
+    if file_integrity_tool == 'aide'
+      describe parse_config_file('/etc/aide.conf') do
+        its('ALL') { should match(/sha512/) }
+      end
+    else
+      describe 'Manual Review' do
+        skip "Review the selected file integrity tool (#{file_integrity_tool}) configuration to ensure it is using FIPS 140-2/140-3-approved cryptographic hashes for validating file contents and directories."
+      end
+    end
+  end
 
   control 'SV-258105' do
     #made change to prevent 'nobody' user with UID 65534 from getting caught. 
@@ -99,6 +81,98 @@ include_controls 'redhat-enterprise-linux-9-stig-baseline' do
       it 'be able to change their password more then once a 24 hour period' do
         failure_message = "The following users can update their password more then once a day: #{in_scope_users.join(', ')}"
         expect(in_scope_users).to be_empty, failure_message
+      end
+    end
+  end
+
+  control 'SV-257803' do
+    if input('storing_core_dumps_required')
+      impact 0.0
+      describe 'N/A' do
+        skip "Profile inputs indicate that this parameter's setting is a documented operational requirement"
+      end
+    else
+      parameter = 'kernel.core_pattern'
+      value = '|/bin/false'
+      regexp = /^\s*#{parameter}\s*=\s*#{value}\s*$/
+
+      describe kernel_parameter(parameter) do
+        its('value') { should eq value }
+      end
+
+      search_results = command("/usr/lib/systemd/systemd-sysctl --cat-config | egrep -v '^(#|;)' | grep -F #{parameter}").stdout.strip.split("\n")
+
+      correct_result = search_results.any? { |line| line.match(regexp) }
+      incorrect_results = search_results.map(&:strip).reject { |line| line.match(regexp) }
+
+      describe 'Kernel config files' do
+        it "should configure '#{parameter}'" do
+          expect(correct_result).to eq(true), 'No config file was found that correctly sets this action'
+        end
+        unless incorrect_results.nil?
+          it 'should not have incorrect or conflicting setting(s) in the config files' do
+            expect(incorrect_results).to be_empty, "Incorrect or conflicting setting(s) found:\n\t- #{incorrect_results.join("\n\t- ")}"
+          end
+        end
+      end
+    end
+  end
+
+  control 'SV-257823' do
+    #misconfigured_files = command("rpm -Va --noconfig | awk '$1 ~ /..5/ && $2 != \"c\"'").stdout.strip.split("\n")
+
+    #skipping these files as some were modified to meet other rules. 
+
+    # Misconfigured files:
+    # - S.5....T.    /usr/share/crypto-policies/FIPS/openssh.txt
+    # - S.5....T.    /usr/share/crypto-policies/FIPS/opensshserver.txt
+    # - S.5....T.    /usr/share/crypto-policies/back-ends/FIPS/opensshserver.config
+    # - ..5....T.    /usr/lib/sysctl.d/10-default-yama-scope.conf
+    # - S.5....T.    /usr/lib/sysctl.d/50-coredump.conf
+
+    misconfigured_files = command("rpm -Va --noconfig | grep -v -e 'openssh.txt' -e 'opensshserver.txt' -e 'opensshserver.config' -e '10-default-yama-scope.conf' -e '50-coredump.conf' -e '50-redhat.conf' -e '50-default.conf' |  awk '$1 ~ /..5/ && $2 != \"c\"'").stdout.strip.split("\n")
+
+    describe 'All system file hashes' do
+      it 'should match vendor hashes' do
+        expect(misconfigured_files).to be_empty, "Misconfigured files:\n\t- #{misconfigured_files.join("\n\t- ")}"
+      end
+    end
+  end
+
+  control 'SV-257936' do
+    if input('external_firewall')
+      message = 'This system uses an externally managed firewall service, verify with the system administrator that the firewall is configured to requirements'
+      describe message do
+        skip message
+      end
+    else
+      describe package('firewalld') do
+        it { should be_installed }
+      end
+      # modified the line below to look for systemd service
+      describe systemd_service('firewalld') do
+        it { should be_installed }
+        it { should be_running }
+      end
+    end
+  end
+
+  control 'SV-257988' do
+    
+    # NOTE: -s to suppress errors if no files exist
+    sshd_grep = command('grep -s Include /etc/ssh/sshd_config /etc/ssh/sshd_config.d/50-redhat.conf').stdout.lines.map(&:strip)
+
+    # Check for specific Include directives
+    star_dot_conf = sshd_grep.any? { |line| line.match?(%r{^/etc/ssh/sshd_config:Include /etc/ssh/sshd_config.d/\*\.conf$}i) }
+    opensshserver_config = sshd_grep.any? { |line| line.match?(%r{^/etc/ssh/sshd_config.d/50-redhat.conf:Include /etc/crypto-policies/back-ends/opensshserver\.config$}i) }
+
+    describe 'SSHD config files' do
+      it 'should explicitly include /etc/ssh/sshd_config.d/*.conf in /etc/ssh/sshd_config' do
+        expect(star_dot_conf).to eq(true), 'SSHD conf does not include /etc/ssh/sshd_config.d/*.conf in /etc/ssh/sshd_config'
+      end
+
+      it 'should explicitly include /etc/crypto-policies/back-ends/opensshserver.config in /etc/ssh/sshd_config.d/50-redhat.conf' do
+        expect(opensshserver_config).to eq(true), 'SSHD conf does not include /etc/crypto-policies/back-ends/opensshserver.config in /etc/ssh/sshd_config.d/50-redhat.conf'
       end
     end
   end
